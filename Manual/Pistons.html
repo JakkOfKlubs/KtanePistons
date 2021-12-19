@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="initial-scale=1">
+	<title>Pistons — Keep Talking and Nobody Explodes Module</title>
+	<link rel="stylesheet" type="text/css" href="css/normalize.css">
+	<link rel="stylesheet" type="text/css" href="css/main.css">
+	<link rel="stylesheet" type="text/css" href="css/font.css">
+	<script src="js/ktane-utils.js"></script>
+	<script src="js/ruleseed.js"></script>
+
+	<script>
+		function setDefaultRules(rnd) {
+			setRules(rnd);
+		}
+
+		function levenshtein(a, b) {
+			let lengthA = a.length;
+			let lengthB = b.length;
+			let distances = {};
+			for (let i = 0; i <= lengthA; distances[`${i},0`] = i++);
+			for (let j = 0; j <= lengthB; distances[`0,${j}`] = j++);
+
+			for (let i = 1; i <= lengthA; i++)
+				for (let j = 1; j < lengthB; j++)
+					distances[`${i},${j}`] = Math.min(Math.min(distances[`${i - 1},${j}`] + 1, distances[`${i},${j - 1}`] + 1), distances[`${i - 1},${j - 1}`] + (b[j - 1] == a[i - 1] ? 0 : 1));
+			return distances[`${lengthA},${lengthB}`];
+		}
+
+		function similarity(a, b) {
+			var score = levenshtein(a, b);
+			for (let i = 1; i < a.length; i++)
+				score = Math.min(score, levenshtein(a.substr(i) + a.substr(0, i), b));
+			return score;
+		}
+
+		function removeWalls(m1, m2) {
+			if (m1.x - m2.x == 1) {
+				m1.wallLeft = false;
+				m2.wallRight = false;
+			}
+			if (m1.x - m2.x == -1) {
+				m1.wallRight = false;
+				m2.wallLeft = false;
+			}
+			if (m1.y - m2.y == 1) {
+				m1.wallUp = false;
+				m2.wallDown = false;
+			}
+			if (m1.y - m2.y == -1) {
+				m1.wallDown = false;
+				m2.wallUp = false;
+			}
+		}
+
+		class Maze {
+			constructor() {
+				this.CellGrid = new Array(4);
+				for (let i = 0; i < 4; i++) {
+					this.CellGrid[i] = new Array(4);
+					for (let j = 0; j < 4; j++)
+						this.CellGrid[i][j] = { x: i, y: j, visited: false, wallUp: true, wallDown: true, wallLeft: true, wallRight: true };
+				}
+			}
+			BuildMaze(rnd) {
+				for (let i = 0; i < 4; i++) {
+					for (let j = 0; j < 4; j++) {
+						if (i > 0) rnd.next();
+						if (j > 0) rnd.next();
+					}
+				}
+				this.PopulateMaze(rnd);
+				rnd.next();
+				rnd.next();
+			}
+			PopulateMaze(rnd) {
+				var x = rnd.next(0, 4);
+				var y = rnd.next(0, 4);
+				this.VisitCell(this.CellGrid[x][y], [], rnd);
+			}
+			VisitCell(cell, cellStack, rnd) {
+				while (cell !== null) {
+					cell.visited = true;
+					let mazeCell = this.GetNextNeighbor(cell, rnd);
+					if (mazeCell !== null) {
+						removeWalls(cell, mazeCell);
+						cellStack.push(cell);
+					}
+					else if (cellStack.length > 0)
+						mazeCell = cellStack.pop();
+					cell = mazeCell;
+				}
+			}
+			GetNextNeighbor(cell, rnd) {
+				var list = [];
+				if (cell.x > 0 && !this.CellGrid[cell.x - 1][cell.y].visited) list.push(this.CellGrid[cell.x - 1][cell.y]);
+				if (cell.x < 3 && !this.CellGrid[cell.x + 1][cell.y].visited) list.push(this.CellGrid[cell.x + 1][cell.y]);
+				if (cell.y > 0 && !this.CellGrid[cell.x][cell.y - 1].visited) list.push(this.CellGrid[cell.x][cell.y - 1]);
+				if (cell.y < 3 && !this.CellGrid[cell.x][cell.y + 1].visited) list.push(this.CellGrid[cell.x][cell.y + 1]);
+				return list.length > 0 ? list[rnd.next(0, list.length)] : null;
+			}
+			ToSVG() {
+				var svg = '';
+				for (let i = 0; i < 4; i++) {
+					for (let j = 0; j < 4; j++) {
+						var mazeCell = this.CellGrid[i][j];
+						var x = i * 50;
+						var y = j * 50;
+						svg += `<circle cx='${x + 25}' cy='${y + 25}' r='3' fill='black' />`;
+						if (mazeCell.wallUp)
+							svg += `<line x1='${x}' y1='${y}' x2='${x + 50}' y2='${y}' stroke-width='${j === 0 ? 10 : 3}' stroke='black' fill='none' />`;
+						if (mazeCell.wallLeft)
+							svg += `<line x1='${x}' y1='${y}' x2='${x}' y2='${y + 50}' stroke-width='${i === 0 ? 10 : 3}' stroke='black' fill='none' />`;
+						if (i == 3)
+							svg += `<line x1='${x + 50}' y1='${y}' x2='${x + 50}' y2='${y + 50}' stroke-width='10' stroke='black' fill='none' />`;
+						if (j == 3)
+							svg += `<line x1='${x}' y1='${y + 50}' x2='${x + 50}' y2='${y + 50}' stroke-width='10' stroke='black' fill='none' />`;
+					}
+				}
+				return `<svg viewBox='0 0 200 200' stroke-linecap="square">${svg}</svg>`;
+			}
+		}
+
+		function setRules(rnd) {
+			rnd.next(0, 2);
+			rnd.next(0, 2);
+			let Mazes = [];
+			for (let i = 0; i < 15; i++) {
+				let maze = new Maze();
+				maze.BuildMaze(rnd);
+				Mazes.push(maze);
+			}
+			for (let i = 0; i < 15; i++)
+				document.getElementById('pistons-maze-' + i).innerHTML = Mazes[i].ToSVG();
+		}
+	</script>
+	<style>
+		.pistons-maze {
+			width: 9em;
+			height: 9em;
+		}
+
+		.wool {
+			width: 1cm;
+			height: 1cm;
+			margin-bottom: 0.2cm;
+		}
+
+		.pistons-maze-table {
+			text-align: center;
+		}
+
+		.color-name {
+			font-size: 13pt;
+			font-weight: bold;
+			margin-left: 0.3cm;
+		}
+	</style>
+</head>
+<body>
+	<div class="section">
+		<div class="page page-bg-01">
+			<div class="page-header">
+				<span class="page-header-doc-title">Keep Talking and Nobody Explodes Mod</span>
+				<span class="page-header-section-title">Pistons</span>
+			</div>
+			<div class="page-content">
+				<img src="img/NotTheScrew.svg" class="diagram">
+				<h2>On the Subject of Pistons</h2>
+				<p class="flavour-text">Don't... screw up...?</p>
+				
+				<table style="border: none" class="pistons-maze-table">
+					<tr>
+						<td><img class="wool" src="img/WoolColors/wool_black.png" /><span class="color-name">Black</span><div class="pistons-maze" id="pistons-maze-0"></div></td>
+						<td><img class="wool" src="img/WoolColors/wool_blue.png" /><span class="color-name">Blue</span><div class="pistons-maze" id="pistons-maze-1"></div></td>
+						<td><img class="wool" src="img/WoolColors/wool_cyan.png" /><span class="color-name">Cyan</span><div class="pistons-maze" id="pistons-maze-2"></div></td>
+						<td><img class="wool" src="img/WoolColors/wool_gray.png" /><span class="color-name">Gray</span><div class="pistons-maze" id="pistons-maze-3"></div></td>
+					</tr>
+					<tr>
+
+						<td><img class="wool" src="img/WoolColors/wool_green.png" /><span class="color-name">Green</span><div class="pistons-maze" id="pistons-maze-4"></div></td>
+						<td><img class="wool" src="img/WoolColors/wool_lightblue.png" /><span class="color-name">Light Blue</span><div class="pistons-maze" id="pistons-maze-5"></div></td>
+						<td><img class="wool" src="img/WoolColors/wool_lightgray.png" /><span class="color-name">Light Gray</span><div class="pistons-maze" id="pistons-maze-6"></div></td>
+						<td><img class="wool" src="img/WoolColors/wool_lime.png" /><span class="color-name">Lime</span><div class="pistons-maze" id="pistons-maze-7"></div></td>
+					</tr>
+					<tr>
+						
+						
+					</tr>
+					<tr>
+						<td><img class="wool" src="img/WoolColors/wool_magenta.png" /><span class="color-name">Magenta</span><div class="pistons-maze" id="pistons-maze-8"></div></td>
+						<td><img class="wool" src="img/WoolColors/wool_orange.png" /><span class="color-name">Orange</span><div class="pistons-maze" id="pistons-maze-9"></div></td>
+						<td><img class="wool" src="img/WoolColors/wool_pink.png" /><span class="color-name">Pink</span><div class="pistons-maze" id="pistons-maze-10"></div></td>
+						<td><img class="wool" src="img/WoolColors/wool_purple.png" /><span class="color-name">Purple</span><div class="pistons-maze" id="pistons-maze-11"></div></td>
+					</tr>
+					<tr>
+						<td><img class="wool" src="img/WoolColors/wool_red.png" /><span class="color-name">Red</span><div class="pistons-maze" id="pistons-maze-12"></div></td>
+						<td><img class="wool" src="img/WoolColors/wool_white.png" /><span class="color-name">White</span><div class="pistons-maze" id="pistons-maze-13"></div></td>
+						<td><img class="wool" src="img/WoolColors/wool_yellow.png" /><span class="color-name">Yellow</span><div class="pistons-maze" id="pistons-maze-14"></div></td>
+					</tr>
+				</table>
+			</div>
+			<div class="page-footer relative-footer">Page 1 of 1</div>
+		</div>
+	</div>
+</body>
+</html>
